@@ -15,10 +15,56 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 router.get('/', (req, res) => {
-    const sql = 'SELECT * FROM recettes';
+    const sql = `
+        SELECT 
+            r.id AS recette_id, 
+            r.nom AS recette_nom, 
+            r.image AS recette_image, 
+            r.description AS recette_description,
+            r.temps_preparation, 
+            r.temps_cuisson,
+            i.id AS ingredient_id, 
+            i.nom AS ingredient_nom, 
+            ri.quantite
+        FROM recettes r
+        JOIN recettes_ingredients ri ON r.id = ri.recette_id
+        JOIN ingredients i ON i.id = ri.ingredient_id
+    `;
+    
     db.query(sql, (err, result) => {
         if (err) throw err;
-        res.send(result);
+        
+        // Organiser le résultat en format JSON propre
+        const recettes = result.reduce((acc, row) => {
+            const { recette_id, recette_nom, recette_image, recette_description, temps_preparation, temps_cuisson, ingredient_id, ingredient_nom, quantite, unite } = row;
+            
+            // Vérifie si la recette existe déjà dans l'accumulateur
+            if (!acc[recette_id]) {
+                acc[recette_id] = {
+                    id: recette_id,
+                    nom: recette_nom,
+                    image: recette_image,
+                    description: recette_description,
+                    temps_preparation,
+                    temps_cuisson,
+                    ingredients: []
+                };
+            }
+
+            // Ajoute l'ingrédient à la liste d'ingrédients de la recette
+            acc[recette_id].ingredients.push({
+                id: ingredient_id,
+                nom: ingredient_nom,
+                quantite
+            });
+
+            return acc;
+        }, {});
+
+        // Convertit l'objet en tableau
+        const response = Object.values(recettes);
+
+        res.send(response);
     });
 });
 
