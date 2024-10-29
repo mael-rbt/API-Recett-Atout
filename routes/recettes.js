@@ -28,15 +28,13 @@ router.get('/', (req, res) => {
             ri.quantite
         FROM recettes r
         JOIN recettes_ingredients ri ON r.id = ri.recette_id
-        JOIN ingredients i ON i.id = ri.ingredient_id
-    `;
-    
+        JOIN ingredients i ON i.id = ri.ingredient_id`;
     db.query(sql, (err, result) => {
         if (err) throw err;
         
         // Organiser le résultat en format JSON propre
         const recettes = result.reduce((acc, row) => {
-            const { recette_id, recette_nom, recette_image, recette_description, temps_preparation, temps_cuisson, ingredient_id, ingredient_nom, quantite, unite } = row;
+            const { recette_id, recette_nom, recette_image, recette_description, temps_preparation, temps_cuisson, ingredient_id, ingredient_nom, quantite } = row;
             
             // Vérifie si la recette existe déjà dans l'accumulateur
             if (!acc[recette_id]) {
@@ -57,10 +55,8 @@ router.get('/', (req, res) => {
                 nom: ingredient_nom,
                 quantite
             });
-
             return acc;
         }, {});
-
         // Convertit l'objet en tableau
         const response = Object.values(recettes);
 
@@ -69,15 +65,62 @@ router.get('/', (req, res) => {
 });
 
 router.post('/', upload.single('image'), (req, res) => {
-    const { nom, description, temps_preparation, temps_cuisson } = req.body;
-    const image = req.file ? `/data/${req.file.filename}` : null;
+    const { nom, description, temps_preparation, temps_cuisson, ingredients } = req.body;
+    const image = req.file ? `/data/${req.file.filename}` : '/';
 
-    const sql = 'INSERT INTO recettes (nom, image, description, temps_preparation, temps_cuisson) VALUES (?, ?, ?, ?, ?)';
-    db.query(sql, [nom, image, description, temps_preparation, temps_cuisson], (err, result) => {
+    let ingredientsList = [];
+    try {
+        // Vérifier si ingredients est déjà un objet JSON
+        ingredientsList = typeof ingredients === 'string' ? JSON.parse(ingredients) : ingredients;
+    } catch (error) {
+        return res.status(400).send({ message: 'Format d\'ingrédients incorrect' });
+    }
+
+    if (!Array.isArray(ingredientsList) || ingredientsList.length === 0) {
+        return res.status(400).send({ message: 'Les ingrédients sont requis pour cette recette' });
+    }
+
+    // Suite du code pour l'insertion de la recette et des ingrédients
+    const sqlRecette = 'INSERT INTO recettes (nom, image, description, temps_preparation, temps_cuisson) VALUES (?, ?, ?, ?, ?)';
+    db.beginTransaction((err) => {
         if (err) throw err;
-        res.send({ message: 'Recette ajoutée avec succès', id: result.insertId });
+
+        db.query(sqlRecette, [nom, image, description, temps_preparation, temps_cuisson], (err, result) => {
+            if (err) {
+                return db.rollback(() => {
+                    throw err;
+                });
+            }
+
+            const recetteId = result.insertId;
+            const sqlIngredient = 'INSERT INTO recettes_ingredients (recette_id, ingredient_id, quantite) VALUES ?';
+
+            const ingredientsData = ingredientsList.map(ingredient => [
+                recetteId,
+                ingredient.id,
+                ingredient.quantite
+            ]);
+
+            db.query(sqlIngredient, [ingredientsData], (err) => {
+                if (err) {
+                    return db.rollback(() => {
+                        throw err;
+                    });
+                }
+                
+                db.commit((err) => {
+                    if (err) {
+                        return db.rollback(() => {
+                            throw err;
+                        });
+                    }
+                    res.send({ message: 'Recette ajoutée avec succès', id: recetteId });
+                });
+            });
+        });
     });
 });
+
 
 router.put('/:id', upload.single('image'), (req, res) => {
     const { id } = req.params;
