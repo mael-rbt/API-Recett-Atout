@@ -21,6 +21,7 @@ router.get('/', (req, res) => {
             r.nom AS recette_nom, 
             r.image AS recette_image, 
             r.description AS recette_description,
+            r.instruction AS recette_instruction,
             r.temps_preparation, 
             r.temps_cuisson,
             i.id AS ingredient_id, 
@@ -34,7 +35,7 @@ router.get('/', (req, res) => {
         
         // Organiser le résultat en format JSON propre
         const recettes = result.reduce((acc, row) => {
-            const { recette_id, recette_nom, recette_image, recette_description, temps_preparation, temps_cuisson, ingredient_id, ingredient_nom, quantite } = row;
+            const { recette_id, recette_nom, recette_image, recette_description, recette_instruction, temps_preparation, temps_cuisson, ingredient_id, ingredient_nom, quantite } = row;
             
             // Vérifie si la recette existe déjà dans l'accumulateur
             if (!acc[recette_id]) {
@@ -43,6 +44,7 @@ router.get('/', (req, res) => {
                     nom: recette_nom,
                     image: recette_image,
                     description: recette_description,
+                    instruction: recette_instruction,
                     temps_preparation,
                     temps_cuisson,
                     ingredients: []
@@ -65,7 +67,8 @@ router.get('/', (req, res) => {
 });
 
 router.post('/', upload.single('image'), (req, res) => {
-    const { nom, description, temps_preparation, temps_cuisson, ingredients } = req.body;
+    const { nom, description, instruction, temps_preparation, temps_cuisson, ingredients } = req.body;
+    console.log('Ajout de recette : '+nom)
     const image = req.file ? `/data/${req.file.filename}` : '/';
 
     let ingredientsList = [];
@@ -80,12 +83,11 @@ router.post('/', upload.single('image'), (req, res) => {
         return res.status(400).send({ message: 'Les ingrédients sont requis pour cette recette' });
     }
 
-    // Suite du code pour l'insertion de la recette et des ingrédients
-    const sqlRecette = 'INSERT INTO recettes (nom, image, description, temps_preparation, temps_cuisson) VALUES (?, ?, ?, ?, ?)';
+    const sqlRecette = 'INSERT INTO recettes (nom, image, description, instruction, temps_preparation, temps_cuisson) VALUES (?, ?, ?, ?, ?, ?)';
     db.beginTransaction((err) => {
         if (err) throw err;
 
-        db.query(sqlRecette, [nom, image, description, temps_preparation, temps_cuisson], (err, result) => {
+        db.query(sqlRecette, [nom, image, description, instruction, temps_preparation, temps_cuisson], (err, result) => {
             if (err) {
                 return db.rollback(() => {
                     throw err;
@@ -124,11 +126,11 @@ router.post('/', upload.single('image'), (req, res) => {
 
 router.put('/:id', upload.single('image'), (req, res) => {
     const { id } = req.params;
-    const { nom, description, temps_preparation, temps_cuisson } = req.body;
+    const { nom, description, instruction, temps_preparation, temps_cuisson } = req.body;
     const image = req.file ? `/data/${req.file.filename}` : null;
 
-    let sql = 'UPDATE recettes SET nom = ?, description = ?, temps_preparation = ?, temps_cuisson = ?';
-    const params = [nom, description, temps_preparation, temps_cuisson];
+    let sql = 'UPDATE recettes SET nom = ?, description = ?, instruction = ?, temps_preparation = ?, temps_cuisson = ?';
+    const params = [nom, description, instruction, temps_preparation, temps_cuisson];
 
     if (image) {
         sql += ', image = ?';
